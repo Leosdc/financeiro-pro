@@ -2,7 +2,7 @@
 
 Um aplicativo de controle financeiro pessoal, inteligente e com design premium. Gerencie seus gastos, controle seus cartões e receba insights valiosos com Inteligência Artificial.
 
-## � Funcionalidades
+## 🎲 Funcionalidades
 
 - **Dashboard Intuitivo**: Visão clara de Entradas, Saídas e Saldo Total.
 - **Gestão de Cartões**: Controle separado por cartões (NuBank, Itaú, Inter, etc.) e métodos (Crédito/Débito).
