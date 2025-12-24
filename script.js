@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbzYO5iizLJ-i-NKetEqIHTpphjBY4zo-NV4F5DOmbJL8MGbRm2G_O95G1Wk8UUNj2sP/exec'; // ATENÇÃO: SUBSTITUA PELA SUA URL DEPOIS DE PUBLICAR
+const API_URL = 'https://script.google.com/macros/s/AKfycbyRlr7h4uf8S_PrK9Fb10P1as_jh3m8cJVA2A4j4AcUAdawQf_pmbhiM-HV-xbDuMx2oA/exec'; // ATENÇÃO: SUBSTITUA PELA SUA URL DEPOIS DE PUBLICAR
 
 // State
 let currentUser = null;
