@@ -1,0 +1,9 @@
+{
+  "name": "Financeiro Pro",
+  "short_name": "Financeiro",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "Controle financeiro inteligente com IA"
+}
