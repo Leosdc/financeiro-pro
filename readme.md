@@ -2,8 +2,6 @@
 
 Um aplicativo de controle financeiro pessoal, inteligente e com design premium. Gerencie seus gastos, controle seus cartões e receba insights valiosos com Inteligência Artificial.
 
-![Financeiro Pro Banner](splash-bg.png)
-
 ## � Funcionalidades
 
 - **Dashboard Intuitivo**: Visão clara de Entradas, Saídas e Saldo Total.
