@@ -3,7 +3,7 @@ const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_URL) || '';
 // State
 let currentUser = null;
 let transactions = [];
-let view = 'login'; // login, dashboard, form, list
+let view = 'login'; // login, register, dashboard, form, list
 let isLoading = false;
 let insightResult = null;
 
@@ -83,6 +83,7 @@ async function loadData() {
 async function saveData(transaction) {
     isLoading = true;
     render();
+
     try {
         const action = transaction.id ? 'update' : 'add';
         const payload = {
@@ -98,19 +99,35 @@ async function saveData(transaction) {
             category: transaction.category
         };
 
-        await fetch(API_URL, {
+        console.log('Enviando payload:', payload); // Debug
+
+        const response = await fetch(API_URL, {
             method: 'POST',
-            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'text/plain',
+            },
             body: JSON.stringify(payload)
         });
 
-        // Simula delay para atualizar (já que no-cors não retorna ok)
-        await new Promise(r => setTimeout(r, 1500));
-        await loadData();
-        showNotification('Transação salva com sucesso!');
-        view = 'dashboard';
+        console.log('Response status:', response.status); // Debug
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('Response data:', result); // Debug
+
+        if (result.success || result.success === undefined) {
+            await loadData();
+            showNotification('Transação salva com sucesso!');
+            view = 'dashboard';
+        } else {
+            throw new Error(result.message || 'Erro ao salvar');
+        }
     } catch (e) {
-        showNotification('Erro ao salvar', 'error');
+        console.error('Erro completo:', e);
+        showNotification('Erro ao salvar: ' + e.message, 'error');
     } finally {
         isLoading = false;
         render();
@@ -125,13 +142,15 @@ async function deleteData(id) {
     try {
         await fetch(API_URL, {
             method: 'POST',
-            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 action: 'delete',
                 rowIndex: id
             })
         });
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1000));
         await loadData();
         showNotification('Transação removida!');
     } catch (e) {
@@ -143,31 +162,90 @@ async function deleteData(id) {
 }
 
 async function handleLogin(username, password) {
+    if (!username || !password) {
+        showNotification('Preencha todos os campos', 'error');
+        return;
+    }
+
     isLoading = true;
     render();
-    // Simples mock login ou real se backend configurado
-    // Como backend pode não estar pronto, aceitamos qualquer user por enquanto para teste de UI,
-    // mas chamamos a API para validar se existir.
 
     try {
-        // Tenta validar
-        const check = await fetch(`${API_URL}?action=checkUser&username=${username}&password=${password}`);
+        const url = `${API_URL}?action=checkUser&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&timestamp=${Date.now()}`;
+        const check = await fetch(url);
+
+        if (!check.ok) {
+            throw new Error(`HTTP error! status: ${check.status}`);
+        }
+
         const res = await check.json();
+
         if (res.success) {
             currentUser = { username };
             localStorage.setItem('finUser', JSON.stringify(currentUser));
             view = 'dashboard';
-            loadData();
+            showNotification('Bem-vindo de volta! 👋');
+            await loadData();
         } else {
-            showNotification('Login inválido', 'error');
+            showNotification(res.message || 'Login inválido', 'error');
         }
     } catch (e) {
-        // Fallback para teste se API falhar (CORS ou erro de script)
-        console.warn('API Login falhou, entrando modo local dev');
-        currentUser = { username };
-        localStorage.setItem('finUser', JSON.stringify(currentUser));
-        view = 'dashboard';
-        loadData();
+        console.error('Erro no login:', e);
+        showNotification('Erro ao conectar: ' + e.message, 'error');
+    } finally {
+        isLoading = false;
+        render();
+    }
+}
+
+async function handleRegister(username, password) {
+    if (!username || !password) {
+        showNotification('Preencha todos os campos', 'error');
+        return;
+    }
+
+    if (username.length < 3) {
+        showNotification('Usuário deve ter no mínimo 3 caracteres', 'error');
+        return;
+    }
+
+    if (password.length < 4) {
+        showNotification('Senha deve ter no mínimo 4 caracteres', 'error');
+        return;
+    }
+
+    isLoading = true;
+    render();
+
+    try {
+        const url = `${API_URL}?timestamp=${Date.now()}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain',
+            },
+            body: JSON.stringify({
+                action: 'registerUser',
+                username: username,
+                password: password
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const res = await response.json();
+
+        if (res.success) {
+            showNotification('Conta criada! Faça login agora 🎉');
+            view = 'login';
+        } else {
+            showNotification(res.message || 'Erro ao criar conta', 'error');
+        }
+    } catch (e) {
+        console.error('Erro no registro:', e);
+        showNotification('Erro ao conectar: ' + e.message, 'error');
     } finally {
         isLoading = false;
         render();
@@ -190,10 +268,11 @@ async function getGroqInsights() {
 
         const res = await fetch(API_URL, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({
                 action: 'callGroq',
-                username: currentUser.username,
-                password: 'pwd', // Simplificacao
                 messages: prompt
             })
         });
@@ -228,8 +307,9 @@ function render() {
         return;
     }
 
-    if (!currentUser || view === 'login') {
+    if (!currentUser || view === 'login' || view === 'register') {
         app.innerHTML = renderLogin();
+        lucide.createIcons(); // Fix: Garante que ícones apareçam
         return;
     }
 
@@ -243,29 +323,38 @@ function render() {
 }
 
 function renderLogin() {
+    const isRegisterMode = view === 'register';
+
     return `
         <div class="flex-1 flex flex-col justify-center p-8 bg-slate-900">
             <div class="text-center mb-10">
-                <div class="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 mb-4">
+                <div class="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/20 mb-4" id="wallet-icon">
                     <i data-lucide="wallet" class="text-white w-10 h-10"></i>
                 </div>
                 <h1 class="text-3xl font-bold text-white mb-2">Financeiro Pro</h1>
-                <p class="text-slate-400">Controle total na palma da mão</p>
+                <p class="text-slate-400">${isRegisterMode ? 'Crie sua conta' : 'Controle total na palma da mão'}</p>
             </div>
 
-            <form onsubmit="event.preventDefault(); handleLogin(this.usersLogin.value, this.passLogin.value)" class="space-y-4">
+            <form onsubmit="event.preventDefault(); ${isRegisterMode ? 'handleRegister' : 'handleLogin'}(this.username.value, this.password.value)" class="space-y-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Usuário</label>
-                    <input name="usersLogin" type="text" class="w-full bg-slate-800 border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" placeholder="Seu usuário" required>
+                    <input name="username" type="text" class="w-full bg-slate-800 border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" placeholder="Seu usuário" required minlength="3">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Senha</label>
-                    <input name="passLogin" type="password" class="w-full bg-slate-800 border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" placeholder="•••••••" required>
+                    <input name="password" type="password" class="w-full bg-slate-800 border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none" placeholder="•••••••" required minlength="4">
                 </div>
                 <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-500/25 mt-4">
-                    Entrar
+                    ${isRegisterMode ? 'Criar Conta' : 'Entrar'}
                 </button>
             </form>
+            
+            <div class="mt-6 text-center">
+                <button onclick="view = '${isRegisterMode ? 'login' : 'register'}'; render()" class="text-sm text-slate-400 hover:text-indigo-400 transition-colors">
+                    ${isRegisterMode ? '← Voltar para login' : 'Criar nova conta →'}
+                </button>
+            </div>
+            
             <p class="mt-8 text-center text-xs text-slate-600">v1.0.0 • Secure Access</p>
         </div>
     `;
@@ -513,6 +602,19 @@ function submitForm(form) {
         card: form.card.value,
         method: form.method.value
     };
+
+    // Validações
+    if (!data.amount || data.amount <= 0) {
+        showNotification('Informe um valor válido', 'error');
+        return;
+    }
+
+    if (!data.description || data.description.trim() === '') {
+        showNotification('Informe uma descrição', 'error');
+        return;
+    }
+
+    console.log('Dados a salvar:', data); // Debug
     saveData(data);
 }
 

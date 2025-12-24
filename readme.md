@@ -24,7 +24,7 @@ Para rodar este projeto, você precisa configurar o backend no Google Apps Scrip
 
 1. Crie uma nova planilha no Google Sheets.
 2. Abra `Extensões > Apps Script`.
-3. Copie o código de `app_script_backend.js` e cole no editor.
+3. Copie o código de `app_script_backend.example.js` e cole no editor.
 4. Defina a propriedade do script `GROQ_API_KEY` com sua chave da Groq.
 5. Publique como **Aplicativo da Web** (Acesso: Qualquer pessoa).
 6. Copie a URL gerada e atualize a variável `API_URL` no arquivo `script.js`.

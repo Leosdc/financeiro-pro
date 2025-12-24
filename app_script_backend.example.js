@@ -1,12 +1,32 @@
-// CÓDIGO DO GOOGLE APPS SCRIPT
-// Copie e cole este código no seu projeto do Google Apps Script.
+const SPREADSHEET_ID = 'ID DA PLANILHA DO GOOGLE SHEETS';
+const GROQ_API_KEY = PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY');
 
-const SPREADSHEET_ID = 'ID DA PLANILHA'; // ID da planilha fornecido
-const GROQ_API_KEY = PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY'); // Salve sua chave nas Propriedades do Script
+// ===== INICIALIZAÇÃO =====
+function initializeSheets() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
+  // Criar aba Users se não existir
+  let usersSheet = ss.getSheetByName('Users');
+  if (!usersSheet) {
+    usersSheet = ss.insertSheet('Users');
+    usersSheet.appendRow(['Username', 'Password', 'CreatedAt']);
+    usersSheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#4F46E5').setFontColor('#FFFFFF');
+  }
+
+  // Criar aba Transacoes se não existir
+  let transSheet = ss.getSheetByName('Transacoes');
+  if (!transSheet) {
+    transSheet = ss.insertSheet('Transacoes');
+    transSheet.appendRow(['Username', 'Data', 'Descricao', 'Valor', 'Tipo', 'Metodo', 'Cartao', 'Categoria']);
+    transSheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#4F46E5').setFontColor('#FFFFFF');
+  }
+
+  return { usersSheet, transSheet };
+}
+
+// ===== GET =====
 function doGet(e) {
   const params = e.parameter;
-  const username = params.username;
   const action = params.action;
 
   // Login / Check User
@@ -14,158 +34,172 @@ function doGet(e) {
     return checkUser(params.username, params.password);
   }
 
-  // Se não tiver usuário, erro
-  if (!username) {
-    return ContentService.createTextOutput(JSON.stringify({ error: 'Usuário não fornecido' })).setMimeType(ContentService.MimeType.JSON);
+  // Get Data
+  if (action === 'getData') {
+    const username = params.username;
+    if (!username) {
+      return jsonResponse({ error: 'Usuário não fornecido' });
+    }
+    return getData(username);
   }
 
-  // Retorna todos os dados para o usuário
-  return getData(username);
+  return jsonResponse({ error: 'Ação GET inválida' });
 }
 
+// ===== POST =====
 function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  const action = data.action;
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const action = data.action;
 
-  if (action === 'registerUser') {
-    return registerUser(data.username, data.password);
+    if (action === 'registerUser') {
+      return registerUser(data.username, data.password);
+    }
+
+    if (action === 'callGroq') {
+      return callGroqAI(data.messages);
+    }
+
+    if (action === 'add') {
+      return addTransaction(data);
+    }
+
+    if (action === 'update') {
+      return updateTransaction(data);
+    }
+
+    if (action === 'delete') {
+      return deleteTransaction(data);
+    }
+
+    return jsonResponse({ error: 'Ação POST inválida' });
+  } catch (err) {
+    return jsonResponse({ error: 'Erro ao processar requisição: ' + err.toString() });
   }
-
-  if (action === 'callGroq') {
-    return callGroqAI(data.messages);
-  }
-
-  if (action === 'add') {
-    return addTransaction(data);
-  }
-
-  if (action === 'update') {
-    return updateTransaction(data);
-  }
-
-  if (action === 'delete') {
-    return deleteTransaction(data);
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({ error: 'Ação inválida' })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// --- FUNÇÕES DE DADOS ---
+// ===== HELPER =====
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
+// ===== DADOS =====
 function getData(username) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Transacoes');
-  if (!sheet) return ContentService.createTextOutput(JSON.stringify([])).setMimeType(ContentService.MimeType.JSON);
+  const { transSheet } = initializeSheets();
 
-  const rows = sheet.getDataRange().getValues();
+  const rows = transSheet.getDataRange().getValues();
+  if (rows.length <= 1) {
+    return jsonResponse([]);
+  }
+
   const headers = rows[0];
   const data = [];
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    // Validação básica de usuário na coluna A (supondo que vamos salvar o user lá)
     if (row[0] === username) {
       const item = {};
       headers.forEach((header, index) => {
         item[header] = row[index];
       });
-      // Adicionamos o índice real da linha para facilitar edição/exclusão (1-based no sheets, mas vamos usar logica de array depois)
       item._rowIndex = i + 1;
       data.push(item);
     }
   }
 
-  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+  return jsonResponse(data);
 }
 
 function addTransaction(data) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Transacoes');
-  if (!sheet) {
-    // Cria a aba se não existir
-    const newSheet = SpreadsheetApp.openById(SPREADSHEET_ID).insertSheet('Transacoes');
-    newSheet.appendRow(['Username', 'Data', 'Descricao', 'Valor', 'Tipo', 'Metodo', 'Cartao', 'Categoria']);
-  }
+  const { transSheet } = initializeSheets();
 
-  const targetSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Transacoes');
-
-  // Ordem: Username, Data, Descricao, Valor, Tipo, Metodo, Cartao, Categoria
-  targetSheet.appendRow([
+  transSheet.appendRow([
     data.username,
     data.date,
     data.description,
-    data.amount,
-    data.type,   // 'receita' ou 'despesa'
-    data.method, // 'credito' ou 'debito'
-    data.card,   // 'NuBank', 'Itaú', etc.
+    parseFloat(data.amount) || 0,
+    data.type,
+    data.method,
+    data.card,
     data.category
   ]);
 
-  return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+  return jsonResponse({ success: true, message: 'Transação adicionada' });
 }
 
 function updateTransaction(data) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Transacoes');
-  const rowIndex = data.rowIndex; // Precisa vir do frontend
+  const { transSheet } = initializeSheets();
+  const rowIndex = data.rowIndex;
 
-  // Segurança basica: verifica se a linha pertence ao usuário (seria ideal, mas simples por enquanto)
-  // Atualiza linha
-  const range = sheet.getRange(rowIndex, 1, 1, 8);
+  if (!rowIndex || rowIndex <= 1) {
+    return jsonResponse({ success: false, error: 'Índice inválido' });
+  }
+
+  const range = transSheet.getRange(rowIndex, 1, 1, 8);
   range.setValues([[
     data.username,
     data.date,
     data.description,
-    data.amount,
+    parseFloat(data.amount) || 0,
     data.type,
     data.method,
     data.card,
     data.category
   ]]);
 
-  return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+  return jsonResponse({ success: true, message: 'Transação atualizada' });
 }
 
 function deleteTransaction(data) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Transacoes');
-  // Deletar linha é perigoso se índices mudarem concorrentemente, mas para uso pessoal ok.
-  // Ideal: limpar conteúdo ou usar ID único. Vamos limpar conteúdo para não zoar índices de outros.
+  const { transSheet } = initializeSheets();
 
-  if (data.rowIndex > 1) { // Protege header
-    sheet.deleteRow(data.rowIndex);
+  if (!data.rowIndex || data.rowIndex <= 1) {
+    return jsonResponse({ success: false, error: 'Índice inválido' });
   }
 
-  return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+  transSheet.deleteRow(data.rowIndex);
+  return jsonResponse({ success: true, message: 'Transação removida' });
 }
 
-
-// --- LOGIN SIMPLES ---
+// ===== AUTENTICAÇÃO =====
 function checkUser(username, password) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users');
-  if (!sheet) return ContentService.createTextOutput(JSON.stringify({ success: false })).setMimeType(ContentService.MimeType.JSON);
+  const { usersSheet } = initializeSheets();
 
-  const rows = sheet.getDataRange().getValues();
+  const rows = usersSheet.getDataRange().getValues();
+
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === username && rows[i][1] === password) {
-      return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+      return jsonResponse({ success: true, username: username });
     }
   }
-  return ContentService.createTextOutput(JSON.stringify({ success: false })).setMimeType(ContentService.MimeType.JSON);
+
+  return jsonResponse({ success: false, message: 'Usuário ou senha inválidos' });
 }
 
 function registerUser(username, password) {
-  let sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users');
-  if (!sheet) {
-    sheet = SpreadsheetApp.openById(SPREADSHEET_ID).insertSheet('Users');
-    sheet.appendRow(['Username', 'Password']);
+  const { usersSheet } = initializeSheets();
+
+  // Verificar se usuário já existe
+  const rows = usersSheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] === username) {
+      return jsonResponse({ success: false, message: 'Usuário já existe' });
+    }
   }
 
-  sheet.appendRow([username, password]);
-  return ContentService.createTextOutput(JSON.stringify({ success: true })).setMimeType(ContentService.MimeType.JSON);
+  // Criar novo usuário
+  const timestamp = new Date().toISOString();
+  usersSheet.appendRow([username, password, timestamp]);
+
+  return jsonResponse({ success: true, message: 'Usuário criado com sucesso' });
 }
 
-// --- GROQ API ---
-
+// ===== GROQ API =====
 function callGroqAI(messages) {
   if (!GROQ_API_KEY) {
-    return ContentService.createTextOutput(JSON.stringify({ error: 'Chave da API Groq não configurada' })).setMimeType(ContentService.MimeType.JSON);
+    return jsonResponse({ error: 'Chave da API Groq não configurada' });
   }
 
   const url = 'https://api.groq.com/openai/v1/chat/completions';
@@ -173,7 +207,8 @@ function callGroqAI(messages) {
   const payload = {
     model: "llama-3.1-70b-versatile",
     messages: messages,
-    temperature: 0.7
+    temperature: 0.7,
+    max_tokens: 1000
   };
 
   const options = {
@@ -189,8 +224,13 @@ function callGroqAI(messages) {
   try {
     const response = UrlFetchApp.fetch(url, options);
     const json = JSON.parse(response.getContentText());
-    return ContentService.createTextOutput(JSON.stringify(json)).setMimeType(ContentService.MimeType.JSON);
+
+    if (json.error) {
+      return jsonResponse({ error: json.error.message || 'Erro na API Groq' });
+    }
+
+    return jsonResponse(json);
   } catch (e) {
-    return ContentService.createTextOutput(JSON.stringify({ error: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return jsonResponse({ error: 'Falha ao conectar com Groq: ' + e.toString() });
   }
 }
