@@ -1,0 +1,13 @@
+# Environment variables
+.env
+.env.local
+
+# IDX
+.idx/
+
+# Node modules (se usar)
+node_modules/
+
+# Configurações sensíveis
+config.js
+app_script_backend.js
